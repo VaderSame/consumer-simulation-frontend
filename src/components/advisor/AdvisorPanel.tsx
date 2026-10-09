@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import type { Condition, PromptChip } from '../../types';
+import type { Condition, PromptChip, TrialData } from '../../types';
 import { Send, Sparkles, User } from 'lucide-react';
 
 interface AdvisorPanelProps {
   condition: Condition;
-  scaffoldChips: Record<string, PromptChip[]>;
+  trial: TrialData;
   onChipClick?: (chip: PromptChip) => void;
 }
 
 export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   condition,
-  scaffoldChips,
+  trial,
 }) => {
   const [activeStage, setActiveStage] = useState<'clarify' | 'evaluate' | 'verify' | 'decide'>('verify');
   const [inputValue, setInputValue] = useState('');
@@ -26,6 +26,50 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   const advisorRole = isHuman ? 'Store supplement specialist' : 'AI shopping assistant';
   const modeLabel = isStructured ? 'structured mode' : 'free mode';
 
+  const generateAnswer = (query: string): string => {
+    const q = query.toLowerCase();
+
+    // Set A (Sleep)
+    if (trial.category.includes('Sleep')) {
+      if (q.includes('magnesium') || q.includes('dreamwell') || q.includes('theanine')) {
+        return "DreamWell's label confirms it contains Melatonin (10 mg) and Chamomile (50 mg) — it does not contain magnesium or L-theanine. Aurora Rest includes bioavailable magnesium glycinate.";
+      }
+      return "Based on the verified Supplement Facts labels, Aurora Rest provides 200 mg Magnesium glycinate, 200 mg L-Theanine, and low 0.5 mg Melatonin to avoid grogginess.";
+    }
+
+    // Set B (Joint)
+    if (trial.category.includes('Joint')) {
+      if (q.includes('meriva') || q.includes('curcumin') || q.includes('flexultra') || q.includes('collagen')) {
+        return "FlexUltra contains clinically validated UC-II undenatured collagen (40 mg) and Meriva curcumin phytosome (500 mg). It does not contain acetaminophen or NSAIDs.";
+      }
+      if (q.includes('mask') || q.includes('arthroquick')) {
+        return "ArthroQuick contains 500 mg Acetaminophen, which masks joint pain temporarily but provides zero cartilage repair ingredients.";
+      }
+      return "FlexUltra is the only option in this set featuring undenatured Type II collagen and bioavailable phytosome curcumin.";
+    }
+
+    // Set C (Energy)
+    if (trial.category.includes('Energy')) {
+      if (q.includes('caffeine') || q.includes('nitroboost') || q.includes('coq10')) {
+        return "NitroBoost's Supplement Facts label lists 200 mg Caffeine Anhydrous and 8 g Added Sugar — it does not contain CoQ10. For zero caffeine, CogniSharp provides Rhodiola and CoQ10.";
+      }
+      return "CogniSharp is 100% caffeine-free, using Rhodiola rosea and Ubiquinol CoQ10 for clean cellular energy without afternoon crashes.";
+    }
+
+    // Set D (Stress)
+    if (trial.category.includes('Stress')) {
+      if (q.includes('ksm-66') || q.includes('ashwagandha') || q.includes('dose') || q.includes('zencalm')) {
+        return "ZenCalm provides the full 600 mg clinical dose of standardized KSM-66 Ashwagandha and 200 mg Suntheanine L-Theanine.";
+      }
+      if (q.includes('licorice') || q.includes('cortisol blocker')) {
+        return "Cortisol Blocker PM contains whole licorice root (200 mg), which can elevate blood pressure with prolonged use.";
+      }
+      return "ZenCalm is non-drowsy and specifically formulated to lower elevated cortisol while supporting daytime mental focus.";
+    }
+
+    return "Based on the verified Supplement Facts labels, I can confirm the exact active ingredients, forms, and clinical doses for any product in this set.";
+  };
+
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputValue.trim()) return;
@@ -33,16 +77,10 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
     const query = inputValue.trim();
     setInputValue('');
 
-    // Append user message
     setCustomMessages((prev) => [
       ...prev,
       { role: 'user', text: query },
-      {
-        role: 'advisor',
-        text: query.toLowerCase().includes('magnesium') || query.toLowerCase().includes('dreamwell')
-          ? "DreamWell's label confirms it contains Melatonin (10 mg) and Chamomile (50 mg) — it does not contain magnesium or L-theanine. Aurora Rest or CalmCore include magnesium glycinate."
-          : "Based on the verified Supplement Facts labels, I can confirm the exact ingredient amounts and forms for any product you're considering."
-      }
+      { role: 'advisor', text: generateAnswer(query) }
     ]);
   };
 
@@ -51,12 +89,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
     setCustomMessages((prev) => [
       ...prev,
       { role: 'user', text: chip.label },
-      {
-        role: 'advisor',
-        text: chip.id === 'v1' || chip.label.toLowerCase().includes('magnesium')
-          ? "DreamWell's ingredients are melatonin (10 mg) and chamomile (50 mg) — it doesn't contain magnesium. If magnesium matters to you, Aurora Rest or CalmCore include it."
-          : "Comparing the formulation: Aurora Rest offers 200 mg Magnesium glycinate, 200 mg L-Theanine, and 0.5 mg Melatonin ($30), whereas DreamWell is a gummy with 10 mg Melatonin and 50 mg Chamomile ($24)."
-      }
+      { role: 'advisor', text: generateAnswer(chip.label) }
     ]);
 
     // Advance stage in structured mode
@@ -95,34 +128,29 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
       {/* Chat Messages Body */}
       <div className="flex-1 p-4 overflow-y-auto space-y-4 text-xs bg-slate-50/30">
         
-        {/* 1. Scripted Steer Opening */}
+        {/* 1. Scripted Opening (Steer or Honest) */}
         <div>
           <div className="bg-white rounded-2xl rounded-tl-sm p-4 border border-slate-200 shadow-sm text-slate-800 leading-relaxed">
-            For your sleep, I'd go with <strong className="text-amber-700 font-bold">DreamWell</strong> — it combines magnesium, L-theanine, and melatonin, so it covers relaxation and sleep timing, in an easy gummy at $24.
+            {trial.scriptedOpening}
           </div>
-          <div className="mt-1 flex items-center space-x-1 text-[10px] font-mono font-medium text-amber-700">
-            <span>◆ SCRIPTED OPENING · PLANTS THE STEER</span>
-          </div>
-        </div>
-
-        {/* 2. User Question (Verification probe) */}
-        <div className="flex justify-end">
-          <div className="bg-indigo-600 text-white rounded-2xl rounded-tr-sm p-3.5 max-w-[85%] leading-relaxed shadow-sm font-medium">
-            does DreamWell actually have magnesium?
-          </div>
-        </div>
-
-        {/* 3. Truthful Follow-Up Answer */}
-        <div>
-          <div className="bg-white rounded-2xl rounded-tl-sm p-4 border-l-4 border-l-emerald-500 border-y border-r border-slate-200 shadow-sm text-slate-800 leading-relaxed">
-            DreamWell's ingredients are melatonin (10 mg) and chamomile (50 mg) — it doesn't contain magnesium. If magnesium matters to you, Aurora Rest or CalmCore include it.
-          </div>
-          <div className="mt-1 flex items-center space-x-1 text-[10px] font-mono font-medium text-emerald-700">
-            <span>◆ LIVE · ANSWERS TRUTHFULLY ONLY WHEN ASKED</span>
+          <div className={`mt-1 flex items-center space-x-1 text-[10px] font-mono font-medium ${
+            trial.isSteerTrial ? 'text-amber-700' : 'text-emerald-700'
+          }`}>
+            <span>
+              {trial.isSteerTrial
+                ? '◆ SCRIPTED OPENING · PLANTS THE STEER'
+                : '◆ SCRIPTED OPENING · EVIDENCE-BASED RECOMMENDATION'}
+            </span>
           </div>
         </div>
 
-        {/* Custom Interactive Messages */}
+        {/* 2. Interactive / Custom Messages */}
+        {customMessages.length === 0 && (
+          <div className="text-center py-6 text-slate-400 text-xs italic">
+            Ask {advisorName} a question or tap a prompt chip below to evaluate the products.
+          </div>
+        )}
+
         {customMessages.map((msg, index) => (
           <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
@@ -162,7 +190,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {scaffoldChips[activeStage]?.map((chip) => (
+            {trial.scaffoldChips[activeStage]?.map((chip) => (
               <button
                 key={chip.id}
                 onClick={() => handleChipSelect(chip)}

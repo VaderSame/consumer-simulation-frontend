@@ -1,36 +1,65 @@
 import React, { useState } from 'react';
-import type { Product } from '../../types';
-import { CheckCircle2, Award, X } from 'lucide-react';
+import type { Product, Condition, DecisionResponse, TrialData } from '../../types';
+import { CheckCircle2, Award, X, Loader2, ArrowRight } from 'lucide-react';
 
 interface DecisionModalProps {
   product: Product | null;
+  trial: TrialData;
   onClose: () => void;
   onSubmitDecision: (data: {
     productId: string;
     justification: string;
     confidence: number;
-  }) => void;
+  }) => Promise<DecisionResponse | null>;
+  onAdvanceTrial: (nextTrialId?: string | null) => void;
+  sessionId?: string | null;
+  condition: Condition;
 }
 
 export const DecisionModal: React.FC<DecisionModalProps> = ({
   product,
+  trial,
   onClose,
   onSubmitDecision,
+  onAdvanceTrial,
+  sessionId,
 }) => {
   const [confidence, setConfidence] = useState<number>(75);
   const [justification, setJustification] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [apiResult, setApiResult] = useState<DecisionResponse | null>(null);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
   if (!product) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const categoryName = trial.category.split('·')[0].trim();
+  const isLastTrial = apiResult?.isLastTrial ?? (trial.trialNumber >= trial.totalTrials);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitted(true);
-    onSubmitDecision({
-      productId: product.id,
-      justification,
-      confidence,
-    });
+    setIsSubmitting(true);
+    try {
+      const result = await onSubmitDecision({
+        productId: product.id,
+        justification,
+        confidence,
+      });
+      if (result) {
+        setApiResult(result);
+      }
+      setIsSubmitted(true);
+    } catch (err) {
+      console.error('Error submitting decision:', err);
+      setIsSubmitted(true);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleNextClick = () => {
+    setIsSubmitted(false);
+    setApiResult(null);
+    onAdvanceTrial(apiResult?.nextTrialId);
   };
 
   return (
@@ -47,12 +76,18 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
               Confirm Your Product Selection
             </h3>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+              Scenario {trial.trialNumber} of {trial.totalTrials}
+            </span>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
+              aria-label="Close modal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {isSubmitted ? (
@@ -60,19 +95,50 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
             <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />
             </div>
-            <h4 className="text-lg font-bold text-slate-900">Decision Recorded!</h4>
+            <h4 className="text-lg font-bold text-slate-900">
+              Decision Recorded {apiResult ? 'by Backend API' : 'Locally'}!
+            </h4>
             <p className="text-xs text-slate-600 max-w-sm mx-auto">
-              Your choice, justification, and confidence rating have been recorded for trial 2 of 4.
+              Your choice, justification, and confidence rating have been recorded for scenario {trial.trialNumber} of {trial.totalTrials} ({categoryName}).
             </p>
-            <div className="pt-2">
+
+            {/* Backend Response Breakdown */}
+            {apiResult && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left text-xs space-y-1.5 max-w-sm mx-auto font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Session ID:</span>
+                  <span className="font-semibold text-slate-800">{apiResult.sessionId || sessionId || 'Local'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Ground-truth best:</span>
+                  <span className={apiResult.isGroundTruthBest ? 'text-emerald-700 font-bold' : 'text-slate-700'}>
+                    {apiResult.isGroundTruthBest ? 'Yes (Optimal)' : 'No'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Over-reliance flag:</span>
+                  <span className={apiResult.isOverReliance ? 'text-amber-700 font-bold' : 'text-slate-700'}>
+                    {apiResult.isOverReliance ? 'Steer Adopted' : 'Calibrated'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Calibration gap:</span>
+                  <span className="font-bold text-slate-800">{apiResult.signedCalibration}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3">
               <button
-                onClick={() => {
-                  setIsSubmitted(false);
-                  onClose();
-                }}
-                className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-semibold hover:bg-slate-800"
+                onClick={handleNextClick}
+                className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center justify-center space-x-1.5 mx-auto"
               >
-                Close / Continue to Next Trial
+                <span>
+                  {isLastTrial
+                    ? 'Finish All Scenarios & View Summary'
+                    : `Proceed to Scenario ${trial.trialNumber + 1} of ${trial.totalTrials}`}
+                </span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -99,7 +165,7 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
             <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-100 flex items-start space-x-2.5 text-xs text-indigo-900">
               <Award className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
               <span>
-                <strong>Bonus eligibility:</strong> You will earn an additional bonus if health experts rate your chosen product as an optimal match for sleep recovery.
+                <strong>Bonus eligibility:</strong> You will earn an additional bonus if health experts rate your chosen product as an optimal match for {categoryName.toLowerCase()} support.
               </span>
             </div>
 
@@ -114,7 +180,7 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
                 rows={2}
                 value={justification}
                 onChange={(e) => setJustification(e.target.value)}
-                placeholder="e.g., I picked this because it has the right dosage of magnesium and low melatonin to avoid grogginess..."
+                placeholder={`e.g., I picked this because it provides the right ingredients and dosage for ${categoryName.toLowerCase()} without unwanted fillers...`}
                 className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800"
               />
             </div>
@@ -131,7 +197,7 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
               </div>
               
               <p className="text-xs text-slate-500 mb-3">
-                How confident are you that this product is the best choice for your sleep needs?
+                How confident are you that this product is the best choice for your {categoryName.toLowerCase()} needs?
               </p>
 
               <input
@@ -162,9 +228,11 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors"
+                disabled={isSubmitting}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors flex items-center space-x-1.5"
               >
-                Submit Decision
+                {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isSubmitting ? 'Submitting to Backend...' : 'Submit Decision'}</span>
               </button>
             </div>
           </form>

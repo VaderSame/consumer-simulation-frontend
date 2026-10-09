@@ -36,15 +36,6 @@ export interface PromptChip {
   stage: 'clarify' | 'evaluate' | 'verify' | 'decide';
 }
 
-export interface ChatMessage {
-  id: string;
-  sender: 'advisor' | 'user';
-  text: string;
-  timestamp: string;
-  badgeLabel?: string;
-  isScripted?: boolean;
-}
-
 export interface TrialData {
   trialNumber: number;
   totalTrials: number;
@@ -57,4 +48,51 @@ export interface TrialData {
   scriptedOpening: string;
   products: Product[];
   scaffoldChips: Record<string, PromptChip[]>;
+}
+
+// ============================================================================
+// API Communication Models (Provisions for Backend Integration)
+// ============================================================================
+
+export interface DecisionSubmission {
+  sessionId: string;
+  prolificId?: string;
+  trialId: string;
+  condition: Condition;
+  selectedProductId: string;
+  justification: string;
+  confidenceScore: number;
+}
+
+export interface DecisionResponse {
+  status: string;
+  sessionId: string;
+  trialId?: string;
+  selectedProductId: string;
+  isGroundTruthBest: boolean;
+  isOverReliance: boolean;
+  signedCalibration: number;
+  nextTrialId?: string | null;
+  isLastTrial?: boolean;
+  message: string;
+}
+
+export interface SessionInitResponse {
+  sessionId: string;
+  condition: Condition;
+  steerSchedule: boolean[];
+  currentTrial: TrialData;
+  trialSequence?: string[];
+}
+
+export interface CompletedDecision {
+  trialId: string;
+  trialNumber: number;
+  totalTrials: number;
+  category: string;
+  scenarioTitle: string;
+  selectedProduct: Product;
+  confidence: number;
+  justification: string;
+  apiResult?: DecisionResponse | null;
 }

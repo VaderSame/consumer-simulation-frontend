@@ -8,6 +8,7 @@ interface ProductGridProps {
   showResearchTags: boolean;
   onViewLabel: (product: Product) => void;
   onSelectProduct: (product: Product) => void;
+  title?: string;
 }
 
 export const ProductGrid: React.FC<ProductGridProps> = ({
@@ -16,16 +17,17 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
   showResearchTags,
   onViewLabel,
   onSelectProduct,
+  title = 'Featured supplements',
 }) => {
   return (
     <div className="flex-1">
       {/* Catalog Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mb-4 pb-2 border-b border-slate-200">
-        <h2 className="text-xl font-bold tracking-tight text-slate-900">
-          Sleep supplements
+        <h2 className="text-xl font-bold tracking-tight text-slate-900 capitalize">
+          {title}
         </h2>
         <span className="text-xs text-slate-500 font-medium mt-1 sm:mt-0">
-          5 products · tap a card to open its Supplement Facts label
+          {products.length} products · tap a card to open its Supplement Facts label
         </span>
       </div>
 

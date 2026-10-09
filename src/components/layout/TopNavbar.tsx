@@ -6,12 +6,18 @@ interface TopNavbarProps {
   condition: Condition;
   onOpenSandbox: () => void;
   isSandboxOpen: boolean;
+  trialNumber?: number;
+  totalTrials?: number;
+  category?: string;
 }
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({
   condition,
   onOpenSandbox,
   isSandboxOpen,
+  trialNumber = 1,
+  totalTrials = 4,
+  category = 'Sleep · Recovery',
 }) => {
   const getConditionLabel = (c: Condition) => {
     switch (c) {
@@ -38,21 +44,27 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           <div className="flex items-baseline space-x-2">
             <span className="text-xl font-bold tracking-tight text-slate-900">Restwell</span>
             <span className="text-xs font-semibold tracking-wider text-slate-500 uppercase">
-              Sleep · Recovery
+              {category}
             </span>
           </div>
         </div>
 
-        {/* Center: Trial Progress */}
+        {/* Center: Dynamic Trial Progress */}
         <div className="hidden sm:flex items-center space-x-3 text-sm text-slate-600">
           <span className="font-medium text-slate-700">Decision</span>
           <div className="flex items-center space-x-1.5">
-            <div className="w-4 h-1.5 bg-indigo-600 rounded-full"></div>
-            <div className="w-4 h-1.5 bg-indigo-600 rounded-full"></div>
-            <div className="w-4 h-1.5 bg-slate-200 rounded-full"></div>
-            <div className="w-4 h-1.5 bg-slate-200 rounded-full"></div>
+            {Array.from({ length: totalTrials }).map((_, i) => (
+              <div
+                key={i}
+                className={`w-4 h-1.5 rounded-full transition-colors ${
+                  i < trialNumber ? 'bg-indigo-600' : 'bg-slate-200'
+                }`}
+              />
+            ))}
           </div>
-          <span className="text-xs font-medium text-slate-500">2 of 4 · Sleep</span>
+          <span className="text-xs font-medium text-slate-500">
+            {trialNumber} of {totalTrials} · {category.split('·')[0].trim()}
+          </span>
         </div>
 
         {/* Right: Condition Pill & Sandbox Switcher */}
