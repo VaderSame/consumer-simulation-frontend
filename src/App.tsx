@@ -268,6 +268,8 @@ export const App: React.FC = () => {
                     key={chatKey}
                     condition={condition}
                     trial={currentTrial}
+                    trialId={activeTrialId}
+                    sessionId={sessionId}
                   />
                 </div>
               )}

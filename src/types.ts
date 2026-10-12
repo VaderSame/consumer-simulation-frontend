@@ -85,6 +85,19 @@ export interface SessionInitResponse {
   trialSequence?: string[];
 }
 
+export interface ChatTurn {
+  role: 'user' | 'advisor';
+  content: string;
+}
+
+export interface AdvisorMessageResponse {
+  sessionId: string;
+  trialId: string;
+  condition: Condition;
+  reply: string;
+  model: string;
+}
+
 export interface CompletedDecision {
   trialId: string;
   trialNumber: number;

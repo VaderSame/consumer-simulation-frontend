@@ -1,4 +1,6 @@
 import type {
+  AdvisorMessageResponse,
+  ChatTurn,
   Condition,
   DecisionSubmission,
   DecisionResponse,
@@ -147,5 +149,42 @@ export async function submitDecision(data: DecisionSubmission): Promise<Decision
     nextTrialId: resData.next_trial_id,
     isLastTrial: Boolean(resData.is_last_trial),
     message: resData.message,
+  };
+}
+
+/**
+ * Asks the live advisor one follow-up question.
+ * The scripted opening stays on the client; this returns only the reply.
+ */
+export async function sendAdvisorMessage(data: {
+  sessionId: string;
+  trialId: string;
+  condition: Condition;
+  message: string;
+  history: ChatTurn[];
+  activeStage?: string | null;
+}): Promise<AdvisorMessageResponse> {
+  const res = await fetch(`${API_BASE_URL}/advisor/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: data.sessionId,
+      trial_id: data.trialId,
+      condition: data.condition,
+      message: data.message,
+      history: data.history,
+      active_stage: data.activeStage ?? null,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Advisor request failed: ${res.status} ${res.statusText}`);
+  }
+  const resData = await res.json();
+  return {
+    sessionId: resData.session_id,
+    trialId: resData.trial_id,
+    condition: resData.condition,
+    reply: resData.reply,
+    model: resData.model,
   };
 }

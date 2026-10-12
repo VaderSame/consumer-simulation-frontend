@@ -1,20 +1,28 @@
 import React, { useState } from 'react';
 import type { Condition, PromptChip, TrialData } from '../../types';
-import { Send, Sparkles, User } from 'lucide-react';
+import { sendAdvisorMessage } from '../../api/client';
+import { Loader2, Send, Sparkles, User } from 'lucide-react';
 
 interface AdvisorPanelProps {
   condition: Condition;
   trial: TrialData;
+  trialId: string;
+  sessionId: string | null;
   onChipClick?: (chip: PromptChip) => void;
 }
+
+type ChatMessage = { role: 'user' | 'advisor'; text: string };
 
 export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   condition,
   trial,
+  trialId,
+  sessionId,
 }) => {
-  const [activeStage, setActiveStage] = useState<'clarify' | 'evaluate' | 'verify' | 'decide'>('verify');
+  const [activeStage, setActiveStage] = useState<'clarify' | 'evaluate' | 'verify' | 'decide'>('clarify');
   const [inputValue, setInputValue] = useState('');
-  const [customMessages, setCustomMessages] = useState<Array<{ role: 'user' | 'advisor'; text: string }>>([]);
+  const [customMessages, setCustomMessages] = useState<ChatMessage[]>([]);
+  const [isSending, setIsSending] = useState(false);
 
   if (condition === 'control') {
     return null;
@@ -26,73 +34,50 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   const advisorRole = isHuman ? 'Store supplement specialist' : 'AI shopping assistant';
   const modeLabel = isStructured ? 'structured mode' : 'free mode';
 
-  const generateAnswer = (query: string): string => {
-    const q = query.toLowerCase();
+  const askAdvisor = async (query: string) => {
+    const history = customMessages.map((msg) => ({
+      role: msg.role,
+      content: msg.text,
+    }));
 
-    // Set A (Sleep)
-    if (trial.category.includes('Sleep')) {
-      if (q.includes('magnesium') || q.includes('dreamwell') || q.includes('theanine')) {
-        return "DreamWell's label confirms it contains Melatonin (10 mg) and Chamomile (50 mg) — it does not contain magnesium or L-theanine. Aurora Rest includes bioavailable magnesium glycinate.";
-      }
-      return "Based on the verified Supplement Facts labels, Aurora Rest provides 200 mg Magnesium glycinate, 200 mg L-Theanine, and low 0.5 mg Melatonin to avoid grogginess.";
+    setCustomMessages((prev) => [...prev, { role: 'user', text: query }]);
+    setIsSending(true);
+
+    try {
+      const response = await sendAdvisorMessage({
+        sessionId: sessionId || 'sess_local_fallback',
+        trialId,
+        condition,
+        message: query,
+        history,
+        activeStage: isStructured ? activeStage : null,
+      });
+      setCustomMessages((prev) => [...prev, { role: 'advisor', text: response.reply }]);
+    } catch (err) {
+      console.warn('Advisor request failed:', err);
+      setCustomMessages((prev) => [
+        ...prev,
+        {
+          role: 'advisor',
+          text: 'I could not reach the advisor just now. Please send that again.',
+        },
+      ]);
+    } finally {
+      setIsSending(false);
     }
-
-    // Set B (Joint)
-    if (trial.category.includes('Joint')) {
-      if (q.includes('meriva') || q.includes('curcumin') || q.includes('flexultra') || q.includes('collagen')) {
-        return "FlexUltra contains clinically validated UC-II undenatured collagen (40 mg) and Meriva curcumin phytosome (500 mg). It does not contain acetaminophen or NSAIDs.";
-      }
-      if (q.includes('mask') || q.includes('arthroquick')) {
-        return "ArthroQuick contains 500 mg Acetaminophen, which masks joint pain temporarily but provides zero cartilage repair ingredients.";
-      }
-      return "FlexUltra is the only option in this set featuring undenatured Type II collagen and bioavailable phytosome curcumin.";
-    }
-
-    // Set C (Energy)
-    if (trial.category.includes('Energy')) {
-      if (q.includes('caffeine') || q.includes('nitroboost') || q.includes('coq10')) {
-        return "NitroBoost's Supplement Facts label lists 200 mg Caffeine Anhydrous and 8 g Added Sugar — it does not contain CoQ10. For zero caffeine, CogniSharp provides Rhodiola and CoQ10.";
-      }
-      return "CogniSharp is 100% caffeine-free, using Rhodiola rosea and Ubiquinol CoQ10 for clean cellular energy without afternoon crashes.";
-    }
-
-    // Set D (Stress)
-    if (trial.category.includes('Stress')) {
-      if (q.includes('ksm-66') || q.includes('ashwagandha') || q.includes('dose') || q.includes('zencalm')) {
-        return "ZenCalm provides the full 600 mg clinical dose of standardized KSM-66 Ashwagandha and 200 mg Suntheanine L-Theanine.";
-      }
-      if (q.includes('licorice') || q.includes('cortisol blocker')) {
-        return "Cortisol Blocker PM contains whole licorice root (200 mg), which can elevate blood pressure with prolonged use.";
-      }
-      return "ZenCalm is non-drowsy and specifically formulated to lower elevated cortisol while supporting daytime mental focus.";
-    }
-
-    return "Based on the verified Supplement Facts labels, I can confirm the exact active ingredients, forms, and clinical doses for any product in this set.";
   };
 
   const handleSendMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!inputValue.trim()) return;
-
+    e?.preventDefault();
     const query = inputValue.trim();
+    if (!query || isSending) return;
     setInputValue('');
-
-    setCustomMessages((prev) => [
-      ...prev,
-      { role: 'user', text: query },
-      { role: 'advisor', text: generateAnswer(query) }
-    ]);
+    void askAdvisor(query);
   };
 
   const handleChipSelect = (chip: PromptChip) => {
-    setInputValue(chip.label);
-    setCustomMessages((prev) => [
-      ...prev,
-      { role: 'user', text: chip.label },
-      { role: 'advisor', text: generateAnswer(chip.label) }
-    ]);
-
-    // Advance stage in structured mode
+    if (isSending) return;
+    void askAdvisor(chip.label);
     if (chip.stage === 'clarify') setActiveStage('evaluate');
     else if (chip.stage === 'evaluate') setActiveStage('verify');
     else if (chip.stage === 'verify') setActiveStage('decide');
@@ -145,7 +130,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
         </div>
 
         {/* 2. Interactive / Custom Messages */}
-        {customMessages.length === 0 && (
+        {customMessages.length === 0 && !isSending && (
           <div className="text-center py-6 text-slate-400 text-xs italic">
             Ask {advisorName} a question or tap a prompt chip below to evaluate the products.
           </div>
@@ -164,6 +149,15 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
             </div>
           </div>
         ))}
+
+        {isSending && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl rounded-tl-sm p-3.5 border border-slate-200 bg-white text-slate-500 flex items-center space-x-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>{advisorName} is replying…</span>
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -194,7 +188,8 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
               <button
                 key={chip.id}
                 onClick={() => handleChipSelect(chip)}
-                className="text-left text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 transition-colors"
+                disabled={isSending}
+                className="text-left text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 transition-colors disabled:opacity-50"
               >
                 {chip.label}
               </button>
@@ -211,11 +206,13 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder={`Ask ${advisorName} anything...`}
-            className="flex-1 text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-slate-50/50"
+            disabled={isSending}
+            className="flex-1 text-xs px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-slate-50/50 disabled:opacity-60"
           />
           <button
             type="submit"
-            className="px-3.5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shrink-0 flex items-center justify-center font-medium text-xs shadow-sm"
+            disabled={isSending}
+            className="px-3.5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors shrink-0 flex items-center justify-center font-medium text-xs shadow-sm disabled:opacity-60"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
