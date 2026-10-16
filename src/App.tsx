@@ -86,6 +86,13 @@ export const App: React.FC = () => {
     setChatKey((prev) => prev + 1);
   };
 
+  const handleConditionChange = (next: Condition) => {
+    if (next !== condition) {
+      setChatKey((prev) => prev + 1);
+    }
+    setCondition(next);
+  };
+
   const handleDecisionSubmit = async (data: {
     productId: string;
     justification: string;
@@ -200,7 +207,7 @@ export const App: React.FC = () => {
       {isSandboxOpen && (
         <SandboxControls
           condition={condition}
-          onConditionChange={setCondition}
+          onConditionChange={handleConditionChange}
           activeTrialId={activeTrialId}
           onSelectTrial={handleSelectTrial}
           showResearchTags={showResearchTags}
