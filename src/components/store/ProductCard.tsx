@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Product, Condition } from '../../types';
 import { Star } from 'lucide-react';
+import { ProductArt } from './ProductArt';
 
 interface ProductCardProps {
   product: Product;
@@ -22,13 +23,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   return (
     <div
-      className={`relative bg-white rounded-xl p-5 border transition-all duration-200 flex flex-col justify-between ${
+      className={`relative bg-white rounded-xl border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
         isRecommended
           ? 'border-indigo-500 shadow-sm ring-1 ring-indigo-500/20'
           : 'border-slate-200 hover:border-slate-300 shadow-sm'
       }`}
     >
-      <div>
+      <ProductArt productId={product.id} form={product.form} className="h-36 w-full" />
+      <div className="p-5 pt-4">
         {/* Advisor Pick Banner (if recommended) */}
         {isRecommended && (
           <div className="inline-flex items-center space-x-1 px-2 py-0.5 mb-2.5 rounded bg-indigo-600 text-white text-[11px] font-semibold tracking-wide uppercase">
@@ -76,7 +78,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       </div>
 
       {/* Card Footer: Price & Action Buttons */}
-      <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+      <div className="px-5 pb-5 pt-3 border-t border-slate-100 flex items-center justify-between">
         <div className="text-lg font-bold text-slate-900">
           ${product.price}
         </div>

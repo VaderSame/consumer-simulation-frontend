@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Product } from '../../types';
 import { X, ShieldAlert } from 'lucide-react';
+import { ProductArt } from './ProductArt';
 
 interface SupplementFactsModalProps {
   product: Product | null;
@@ -23,6 +24,12 @@ export const SupplementFactsModal: React.FC<SupplementFactsModalProps> = ({
       >
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ProductArt
+              productId={product.id}
+              form={product.form}
+              className="h-14 w-14 rounded-xl overflow-hidden border border-slate-200"
+            />
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
               Verified Product Label
@@ -30,6 +37,7 @@ export const SupplementFactsModal: React.FC<SupplementFactsModalProps> = ({
             <h3 className="text-lg font-bold text-slate-900 leading-tight">
               {product.name} ({product.form.toLowerCase()})
             </h3>
+          </div>
           </div>
           <button
             onClick={onClose}
