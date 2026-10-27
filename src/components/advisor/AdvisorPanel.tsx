@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Condition, PromptChip, TrialData } from '../../types';
-import { sendAdvisorMessage } from '../../api/client';
+import { sendAdvisorMessage, streamAdvisorMessage } from '../../api/client';
 import { Loader2, Send, Sparkles, User } from 'lucide-react';
 
 interface AdvisorPanelProps {
@@ -35,33 +35,71 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   const modeLabel = isStructured ? 'structured mode' : 'free mode';
 
   const askAdvisor = async (query: string) => {
-    const history = customMessages.map((msg) => ({
-      role: msg.role,
-      content: msg.text,
-    }));
+    const history = customMessages
+      .filter((msg) => msg.text.trim().length > 0)
+      .map((msg) => ({
+        role: msg.role,
+        content: msg.text,
+      }));
 
-    setCustomMessages((prev) => [...prev, { role: 'user', text: query }]);
+    setCustomMessages((prev) => [
+      ...prev,
+      { role: 'user', text: query },
+      { role: 'advisor', text: '' },
+    ]);
     setIsSending(true);
 
     try {
-      const response = await sendAdvisorMessage({
-        sessionId: sessionId || 'sess_local_fallback',
-        trialId,
-        condition,
-        message: query,
-        history,
-        activeStage: isStructured ? activeStage : null,
-      });
-      setCustomMessages((prev) => [...prev, { role: 'advisor', text: response.reply }]);
-    } catch (err) {
-      console.warn('Advisor request failed:', err);
-      setCustomMessages((prev) => [
-        ...prev,
+      await streamAdvisorMessage(
         {
-          role: 'advisor',
-          text: 'I could not reach the advisor just now. Please send that again.',
+          sessionId: sessionId || 'sess_local_fallback',
+          trialId,
+          condition,
+          message: query,
+          history,
+          activeStage: isStructured ? activeStage : null,
         },
-      ]);
+        (partialText) => {
+          setCustomMessages((prev) => {
+            const next = [...prev];
+            if (next.length > 0 && next[next.length - 1].role === 'advisor') {
+              next[next.length - 1] = { role: 'advisor', text: partialText };
+            }
+            return next;
+          });
+        }
+      );
+    } catch (err) {
+      console.warn('Advisor stream failed, falling back to non-streaming:', err);
+      try {
+        const fallback = await sendAdvisorMessage({
+          sessionId: sessionId || 'sess_local_fallback',
+          trialId,
+          condition,
+          message: query,
+          history,
+          activeStage: isStructured ? activeStage : null,
+        });
+        setCustomMessages((prev) => {
+          const next = [...prev];
+          if (next.length > 0 && next[next.length - 1].role === 'advisor') {
+            next[next.length - 1] = { role: 'advisor', text: fallback.reply };
+          }
+          return next;
+        });
+      } catch (fallbackErr) {
+        console.warn('Advisor request failed:', fallbackErr);
+        setCustomMessages((prev) => {
+          const next = [...prev];
+          if (next.length > 0 && next[next.length - 1].role === 'advisor') {
+            next[next.length - 1] = {
+              role: 'advisor',
+              text: 'I could not reach the advisor just now. Please send that again.',
+            };
+          }
+          return next;
+        });
+      }
     } finally {
       setIsSending(false);
     }
@@ -138,26 +176,24 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
 
         {customMessages.map((msg, index) => (
           <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`rounded-2xl p-3.5 max-w-[88%] leading-relaxed shadow-sm ${
-                msg.role === 'user'
-                  ? 'bg-indigo-600 text-white rounded-tr-sm font-medium'
-                  : 'bg-white rounded-tl-sm border-l-4 border-l-emerald-500 border-y border-r border-slate-200 text-slate-800'
-              }`}
-            >
-              {msg.text}
-            </div>
+            {msg.role === 'advisor' && msg.text === '' ? (
+              <div className="rounded-2xl rounded-tl-sm p-3.5 border border-slate-200 bg-white text-slate-500 flex items-center space-x-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{advisorName} is replying…</span>
+              </div>
+            ) : (
+              <div
+                className={`rounded-2xl p-3.5 max-w-[88%] leading-relaxed shadow-sm ${
+                  msg.role === 'user'
+                    ? 'bg-indigo-600 text-white rounded-tr-sm font-medium'
+                    : 'bg-white rounded-tl-sm border-l-4 border-l-emerald-500 border-y border-r border-slate-200 text-slate-800'
+                }`}
+              >
+                {msg.text}
+              </div>
+            )}
           </div>
         ))}
-
-        {isSending && (
-          <div className="flex justify-start">
-            <div className="rounded-2xl rounded-tl-sm p-3.5 border border-slate-200 bg-white text-slate-500 flex items-center space-x-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>{advisorName} is replying…</span>
-            </div>
-          </div>
-        )}
 
       </div>
 

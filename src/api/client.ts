@@ -9,8 +9,13 @@ import type {
   Product,
 } from '../types';
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+export const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined' && window.location.hostname.includes('.devtunnels.ms')) {
+    const backendHost = window.location.host.replace(/-5173\b/, '-8000').replace(/-5174\b/, '-8000');
+    return `${window.location.protocol}//${backendHost}/api/v1`;
+  }
+  return import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+})();
 
 /**
  * Normalizes backend snake_case trial data to frontend camelCase conventions.
@@ -109,13 +114,25 @@ export async function listTrials(): Promise<TrialData[]> {
 }
 
 /**
- * Fetches stimuli data for a specific trial.
+ * Fetches stimuli data for a specific trial (and triggers backend LLM warm-up).
  */
-export async function getTrial(trialId: string): Promise<TrialData> {
-  const res = await fetch(`${API_BASE_URL}/trial/${encodeURIComponent(trialId)}`);
+export async function getTrial(trialId: string, condition?: Condition): Promise<TrialData> {
+  const query = condition ? `?condition=${encodeURIComponent(condition)}` : '';
+  const res = await fetch(`${API_BASE_URL}/trial/${encodeURIComponent(trialId)}${query}`);
   if (!res.ok) throw new Error(`Failed to fetch trial ${trialId}: ${res.statusText}`);
   const data = await res.json();
   return mapBackendTrial(data);
+}
+
+/**
+ * Fire-and-forget pre-warming of the advisor LLM cache when condition or trial changes.
+ */
+export function warmAdvisor(trialId: string, condition: Condition): void {
+  if (condition === 'control') return;
+  const query = new URLSearchParams({ trial_id: trialId, condition });
+  fetch(`${API_BASE_URL}/advisor/warm?${query.toString()}`, { method: 'POST' }).catch(() => {
+    // Non-critical background pre-warm
+  });
 }
 
 /**
@@ -153,8 +170,7 @@ export async function submitDecision(data: DecisionSubmission): Promise<Decision
 }
 
 /**
- * Asks the live advisor one follow-up question.
- * The scripted opening stays on the client; this returns only the reply.
+ * Asks the live advisor one follow-up question (non-streaming fallback).
  */
 export async function sendAdvisorMessage(data: {
   sessionId: string;
@@ -187,4 +203,55 @@ export async function sendAdvisorMessage(data: {
     reply: resData.reply,
     model: resData.model,
   };
+}
+
+/**
+ * Streams the advisor reply token-by-token, calling `onUpdate(fullTextSoFar)` as chunks arrive.
+ */
+export async function streamAdvisorMessage(
+  data: {
+    sessionId: string;
+    trialId: string;
+    condition: Condition;
+    message: string;
+    history: ChatTurn[];
+    activeStage?: string | null;
+  },
+  onUpdate: (partialReply: string) => void
+): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/advisor/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: data.sessionId,
+      trial_id: data.trialId,
+      condition: data.condition,
+      message: data.message,
+      history: data.history,
+      active_stage: data.activeStage ?? null,
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    throw new Error(`Advisor stream failed: ${res.status} ${res.statusText}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let accumulated = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk) {
+      accumulated += chunk;
+      onUpdate(accumulated);
+    }
+  }
+
+  accumulated += decoder.decode();
+  const finalReply = accumulated.trim();
+  onUpdate(finalReply);
+  return finalReply;
 }

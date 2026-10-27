@@ -8,7 +8,7 @@ import { SupplementFactsModal } from './components/store/SupplementFactsModal';
 import { AdvisorPanel } from './components/advisor/AdvisorPanel';
 import { DecisionModal } from './components/checkout/DecisionModal';
 import { CompletionView } from './components/study/CompletionView';
-import { initSession, submitDecision, getTrial } from './api/client';
+import { initSession, submitDecision, getTrial, warmAdvisor } from './api/client';
 import { Info } from 'lucide-react';
 
 const DEFAULT_TRIAL_ORDER = [
@@ -75,7 +75,7 @@ export const App: React.FC = () => {
     setChatKey((prev) => prev + 1);
 
     try {
-      const trialData = await getTrial(trialId);
+      const trialData = await getTrial(trialId, condition);
       setCurrentTrial(trialData);
     } catch (err) {
       console.warn(`Could not fetch trial ${trialId} from backend, falling back to local:`, err);
@@ -91,6 +91,7 @@ export const App: React.FC = () => {
       setChatKey((prev) => prev + 1);
     }
     setCondition(next);
+    warmAdvisor(activeTrialId, next);
   };
 
   const handleDecisionSubmit = async (data: {
