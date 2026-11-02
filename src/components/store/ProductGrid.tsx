@@ -5,6 +5,7 @@ import { ProductCard } from './ProductCard';
 interface ProductGridProps {
   products: Product[];
   condition: Condition;
+  isSteerTrial?: boolean;
   showResearchTags: boolean;
   onViewLabel: (product: Product) => void;
   onSelectProduct: (product: Product) => void;
@@ -14,6 +15,7 @@ interface ProductGridProps {
 export const ProductGrid: React.FC<ProductGridProps> = ({
   products,
   condition,
+  isSteerTrial = true,
   showResearchTags,
   onViewLabel,
   onSelectProduct,
@@ -38,6 +40,7 @@ export const ProductGrid: React.FC<ProductGridProps> = ({
             key={product.id}
             product={product}
             condition={condition}
+            isSteerTrial={isSteerTrial}
             showResearchTags={showResearchTags}
             onViewLabel={onViewLabel}
             onSelectProduct={onSelectProduct}

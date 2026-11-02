@@ -136,7 +136,7 @@ export function warmAdvisor(trialId: string, condition: Condition): void {
 }
 
 /**
- * Submits the participant's choice, justification, and confidence score.
+ * Submits the participant's choice, justification, confidence score, and behavioral verification telemetry.
  */
 export async function submitDecision(data: DecisionSubmission): Promise<DecisionResponse> {
   const res = await fetch(`${API_BASE_URL}/decision`, {
@@ -145,11 +145,28 @@ export async function submitDecision(data: DecisionSubmission): Promise<Decision
     body: JSON.stringify({
       session_id: data.sessionId,
       prolific_id: data.prolificId,
+      study_id: data.studyId,
       trial_id: data.trialId,
       condition: data.condition,
       selected_product_id: data.selectedProductId,
       justification: data.justification,
       confidence_score: data.confidenceScore,
+      trial_duration_ms: data.trialDurationMs,
+      label_views: (data.labelViews || []).map((lv) => ({
+        product_id: lv.productId,
+        product_name: lv.productName,
+        opened_at: lv.openedAt,
+        closed_at: lv.closedAt,
+        dwell_time_ms: lv.dwellTimeMs,
+      })),
+      chat_transcript: (data.chatTranscript || []).map((ct) => ({
+        role: ct.role,
+        content: ct.content,
+        timestamp: ct.timestamp,
+        stage: ct.stage ?? null,
+        chip_id: ct.chipId ?? null,
+      })),
+      chips_clicked: data.chipsClicked || [],
     }),
   });
   if (!res.ok) throw new Error(`Failed to submit decision: ${res.statusText}`);
@@ -163,6 +180,14 @@ export async function submitDecision(data: DecisionSubmission): Promise<Decision
     isGroundTruthBest: resData.is_ground_truth_best,
     isOverReliance: resData.is_over_reliance,
     signedCalibration: resData.signed_calibration,
+    openedSteerLabel: Boolean(resData.opened_steer_label),
+    openedAnyLabel: Boolean(resData.opened_any_label),
+    uniqueLabelsViewed: resData.unique_labels_viewed ?? 0,
+    totalLabelDwellMs: resData.total_label_dwell_ms ?? 0,
+    chatUserTurns: resData.chat_user_turns ?? 0,
+    chipsClickedCount: resData.chips_clicked_count ?? 0,
+    usedVerifyChip: Boolean(resData.used_verify_chip),
+    trialDurationMs: resData.trial_duration_ms ?? null,
     nextTrialId: resData.next_trial_id,
     isLastTrial: Boolean(resData.is_last_trial),
     message: resData.message,

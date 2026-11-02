@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Condition, PromptChip, TrialData } from '../../types';
+import type { Condition, LoggedChatTurn, PromptChip, TrialData } from '../../types';
 import { sendAdvisorMessage, streamAdvisorMessage } from '../../api/client';
 import { Loader2, Send, Sparkles, User } from 'lucide-react';
 
@@ -8,20 +8,31 @@ interface AdvisorPanelProps {
   trial: TrialData;
   trialId: string;
   sessionId: string | null;
-  onChipClick?: (chip: PromptChip) => void;
+  onTelemetryChange?: (data: {
+    transcript: LoggedChatTurn[];
+    chipsClicked: string[];
+  }) => void;
 }
 
-type ChatMessage = { role: 'user' | 'advisor'; text: string };
+type ChatMessage = {
+  role: 'user' | 'advisor';
+  text: string;
+  timestamp: string;
+  stage?: string | null;
+  chipId?: string | null;
+};
 
 export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   condition,
   trial,
   trialId,
   sessionId,
+  onTelemetryChange,
 }) => {
   const [activeStage, setActiveStage] = useState<'clarify' | 'evaluate' | 'verify' | 'decide'>('clarify');
   const [inputValue, setInputValue] = useState('');
   const [customMessages, setCustomMessages] = useState<ChatMessage[]>([]);
+  const [chipsClicked, setChipsClicked] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
 
   if (condition === 'control') {
@@ -34,7 +45,21 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
   const advisorRole = isHuman ? 'Store supplement specialist' : 'AI shopping assistant';
   const modeLabel = isStructured ? 'structured mode' : 'free mode';
 
-  const askAdvisor = async (query: string) => {
+  const emitTelemetry = (messages: ChatMessage[], nextChips: string[]) => {
+    if (!onTelemetryChange) return;
+    const transcript: LoggedChatTurn[] = messages
+      .filter((m) => m.text.trim().length > 0)
+      .map((m) => ({
+        role: m.role,
+        content: m.text,
+        timestamp: m.timestamp,
+        stage: m.stage ?? null,
+        chipId: m.chipId ?? null,
+      }));
+    onTelemetryChange({ transcript, chipsClicked: nextChips });
+  };
+
+  const askAdvisor = async (query: string, chip?: PromptChip) => {
     const history = customMessages
       .filter((msg) => msg.text.trim().length > 0)
       .map((msg) => ({
@@ -42,33 +67,67 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
         content: msg.text,
       }));
 
-    setCustomMessages((prev) => [
-      ...prev,
-      { role: 'user', text: query },
-      { role: 'advisor', text: '' },
-    ]);
+    const stageUsed = isStructured ? (chip?.stage || activeStage) : null;
+    const nextChips = chip ? [...chipsClicked, chip.id] : chipsClicked;
+    if (chip) {
+      setChipsClicked(nextChips);
+    }
+
+    const userTurn: ChatMessage = {
+      role: 'user',
+      text: query,
+      timestamp: new Date().toISOString(),
+      stage: stageUsed,
+      chipId: chip?.id || null,
+    };
+    const placeholderAdvisorTurn: ChatMessage = {
+      role: 'advisor',
+      text: '',
+      timestamp: new Date().toISOString(),
+      stage: stageUsed,
+      chipId: null,
+    };
+
+    setCustomMessages((prev) => [...prev, userTurn, placeholderAdvisorTurn]);
     setIsSending(true);
 
     try {
-      await streamAdvisorMessage(
+      const finalReply = await streamAdvisorMessage(
         {
           sessionId: sessionId || 'sess_local_fallback',
           trialId,
           condition,
           message: query,
           history,
-          activeStage: isStructured ? activeStage : null,
+          activeStage: stageUsed,
         },
         (partialText) => {
           setCustomMessages((prev) => {
             const next = [...prev];
             if (next.length > 0 && next[next.length - 1].role === 'advisor') {
-              next[next.length - 1] = { role: 'advisor', text: partialText };
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                text: partialText,
+                timestamp: new Date().toISOString(),
+              };
             }
             return next;
           });
         }
       );
+
+      setCustomMessages((prev) => {
+        const next = [...prev];
+        if (next.length > 0 && next[next.length - 1].role === 'advisor') {
+          next[next.length - 1] = {
+            ...next[next.length - 1],
+            text: finalReply,
+            timestamp: new Date().toISOString(),
+          };
+        }
+        emitTelemetry(next, nextChips);
+        return next;
+      });
     } catch (err) {
       console.warn('Advisor stream failed, falling back to non-streaming:', err);
       try {
@@ -78,13 +137,18 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
           condition,
           message: query,
           history,
-          activeStage: isStructured ? activeStage : null,
+          activeStage: stageUsed,
         });
         setCustomMessages((prev) => {
           const next = [...prev];
           if (next.length > 0 && next[next.length - 1].role === 'advisor') {
-            next[next.length - 1] = { role: 'advisor', text: fallback.reply };
+            next[next.length - 1] = {
+              ...next[next.length - 1],
+              text: fallback.reply,
+              timestamp: new Date().toISOString(),
+            };
           }
+          emitTelemetry(next, nextChips);
           return next;
         });
       } catch (fallbackErr) {
@@ -93,10 +157,12 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
           const next = [...prev];
           if (next.length > 0 && next[next.length - 1].role === 'advisor') {
             next[next.length - 1] = {
-              role: 'advisor',
+              ...next[next.length - 1],
               text: 'I could not reach the advisor just now. Please send that again.',
+              timestamp: new Date().toISOString(),
             };
           }
+          emitTelemetry(next, nextChips);
           return next;
         });
       }
@@ -115,7 +181,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
 
   const handleChipSelect = (chip: PromptChip) => {
     if (isSending) return;
-    void askAdvisor(chip.label);
+    void askAdvisor(chip.label, chip);
     if (chip.stage === 'clarify') setActiveStage('evaluate');
     else if (chip.stage === 'evaluate') setActiveStage('verify');
     else if (chip.stage === 'verify') setActiveStage('decide');

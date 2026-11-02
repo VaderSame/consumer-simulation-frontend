@@ -6,6 +6,7 @@ import { ProductArt } from './ProductArt';
 interface ProductCardProps {
   product: Product;
   condition: Condition;
+  isSteerTrial?: boolean;
   showResearchTags: boolean;
   onViewLabel: (product: Product) => void;
   onSelectProduct: (product: Product) => void;
@@ -14,11 +15,15 @@ interface ProductCardProps {
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   condition,
+  isSteerTrial = true,
   showResearchTags,
   onViewLabel,
   onSelectProduct,
 }) => {
-  const isRecommended = product.isSteerTarget && condition !== 'control';
+  const isAdvisorOpeningPick = isSteerTrial
+    ? Boolean(product.isSteerTarget)
+    : Boolean(product.isGroundTruthBest);
+  const isRecommended = isAdvisorOpeningPick && condition !== 'control';
   const advisorPickLabel = condition === 'human_free' ? "ALEX'S PICK" : "SHOPMATE'S PICK";
 
   return (

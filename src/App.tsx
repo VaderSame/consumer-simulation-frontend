@@ -1,5 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import type { Condition, Product, DecisionResponse, TrialData, CompletedDecision } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import type {
+  Condition,
+  Product,
+  DecisionResponse,
+  TrialData,
+  CompletedDecision,
+  LabelViewEvent,
+  LoggedChatTurn,
+} from './types';
 import { sleepTrialSetA } from './data/mockTrial';
 import { TopNavbar } from './components/layout/TopNavbar';
 import { SandboxControls } from './components/layout/SandboxControls';
@@ -35,6 +43,21 @@ export const App: React.FC = () => {
   // Backend session ID
   const [sessionId, setSessionId] = useState<string | null>(null);
 
+  // Behavioral verification telemetry per trial
+  const trialStartTimeRef = useRef<number>(Date.now());
+  const labelOpenedAtRef = useRef<{ product: Product; openedAtMs: number; openedAtIso: string } | null>(null);
+  const [labelViews, setLabelViews] = useState<LabelViewEvent[]>([]);
+  const [chatTranscript, setChatTranscript] = useState<LoggedChatTurn[]>([]);
+  const [chipsClicked, setChipsClicked] = useState<string[]>([]);
+
+  const resetTrialTelemetry = () => {
+    trialStartTimeRef.current = Date.now();
+    labelOpenedAtRef.current = null;
+    setLabelViews([]);
+    setChatTranscript([]);
+    setChipsClicked([]);
+  };
+
   // On mount: Handshake with backend API to initialize session
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +74,7 @@ export const App: React.FC = () => {
           if (session.trialSequence && session.trialSequence.length > 0) {
             setTrialSequence(session.trialSequence);
           }
+          trialStartTimeRef.current = Date.now();
           console.log('[API Handshake] Successfully connected to FastAPI backend. Session:', session.sessionId);
         }
       } catch (err) {
@@ -67,11 +91,42 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  const handleOpenLabel = (prod: Product) => {
+    labelOpenedAtRef.current = {
+      product: prod,
+      openedAtMs: Date.now(),
+      openedAtIso: new Date().toISOString(),
+    };
+    setActiveLabelProduct(prod);
+  };
+
+  const handleCloseLabel = () => {
+    if (labelOpenedAtRef.current) {
+      const closedAtMs = Date.now();
+      const closedAtIso = new Date().toISOString();
+      const { product, openedAtMs, openedAtIso } = labelOpenedAtRef.current;
+      const dwellTimeMs = Math.max(0, closedAtMs - openedAtMs);
+      setLabelViews((prev) => [
+        ...prev,
+        {
+          productId: product.id,
+          productName: product.name,
+          openedAt: openedAtIso,
+          closedAt: closedAtIso,
+          dwellTimeMs,
+        },
+      ]);
+      labelOpenedAtRef.current = null;
+    }
+    setActiveLabelProduct(null);
+  };
+
   const handleSelectTrial = async (trialId: string) => {
     setActiveTrialId(trialId);
     setIsStudyCompleted(false);
     setSelectedProduct(null);
     setActiveLabelProduct(null);
+    resetTrialTelemetry();
     setChatKey((prev) => prev + 1);
 
     try {
@@ -83,11 +138,15 @@ export const App: React.FC = () => {
   };
 
   const handleResetChat = () => {
+    setChatTranscript([]);
+    setChipsClicked([]);
     setChatKey((prev) => prev + 1);
   };
 
   const handleConditionChange = (next: Condition) => {
     if (next !== condition) {
+      setChatTranscript([]);
+      setChipsClicked([]);
       setChatKey((prev) => prev + 1);
     }
     setCondition(next);
@@ -99,6 +158,8 @@ export const App: React.FC = () => {
     justification: string;
     confidence: number;
   }): Promise<DecisionResponse | null> => {
+    const trialDurationMs = Math.max(0, Date.now() - trialStartTimeRef.current);
+
     try {
       const response = await submitDecision({
         sessionId: sessionId || 'sess_local_fallback',
@@ -107,6 +168,10 @@ export const App: React.FC = () => {
         selectedProductId: data.productId,
         justification: data.justification,
         confidenceScore: data.confidence,
+        trialDurationMs,
+        labelViews,
+        chatTranscript,
+        chipsClicked,
       });
 
       // Record completed decision for summary review
@@ -137,6 +202,9 @@ export const App: React.FC = () => {
       if (selectedProduct) {
         const isGroundTruthBest = selectedProduct.id === currentTrial.groundTruthBestId;
         const isOverReliance = currentTrial.isSteerTrial && selectedProduct.id === currentTrial.steerTargetId;
+        const uniqueLabelsViewed = new Set(labelViews.map((l) => l.productId)).size;
+        const totalLabelDwellMs = labelViews.reduce((acc, l) => acc + l.dwellTimeMs, 0);
+        const chatUserTurns = chatTranscript.filter((t) => t.role === 'user').length;
         const fallbackResponse: DecisionResponse = {
           status: 'recorded_offline',
           sessionId: sessionId || 'sess_local_fallback',
@@ -145,6 +213,14 @@ export const App: React.FC = () => {
           isGroundTruthBest,
           isOverReliance,
           signedCalibration: data.confidence - (isGroundTruthBest ? 100 : 0),
+          openedSteerLabel: labelViews.some((l) => l.productId === currentTrial.steerTargetId),
+          openedAnyLabel: labelViews.length > 0,
+          uniqueLabelsViewed,
+          totalLabelDwellMs,
+          chatUserTurns,
+          chipsClickedCount: chipsClicked.length,
+          usedVerifyChip: chipsClicked.some((c) => c.startsWith('v')),
+          trialDurationMs,
           nextTrialId: null,
           isLastTrial: currentTrial.trialNumber >= currentTrial.totalTrials,
           message: 'Decision recorded locally (offline mode).',
@@ -262,8 +338,9 @@ export const App: React.FC = () => {
                 <ProductGrid
                   products={currentTrial.products}
                   condition={condition}
+                  isSteerTrial={currentTrial.isSteerTrial}
                   showResearchTags={showResearchTags}
-                  onViewLabel={(prod) => setActiveLabelProduct(prod)}
+                  onViewLabel={handleOpenLabel}
                   onSelectProduct={(prod) => setSelectedProduct(prod)}
                   title={currentTrial.scenarioTitle}
                 />
@@ -278,6 +355,10 @@ export const App: React.FC = () => {
                     trial={currentTrial}
                     trialId={activeTrialId}
                     sessionId={sessionId}
+                    onTelemetryChange={({ transcript, chipsClicked: nextChips }) => {
+                      setChatTranscript(transcript);
+                      setChipsClicked(nextChips);
+                    }}
                   />
                 </div>
               )}
@@ -295,7 +376,7 @@ export const App: React.FC = () => {
       {/* Modal 1: FDA Supplement Facts Label Inspection */}
       <SupplementFactsModal
         product={activeLabelProduct}
-        onClose={() => setActiveLabelProduct(null)}
+        onClose={handleCloseLabel}
       />
 
       {/* Modal 2: Decision Finalization & Metacognitive Ratings */}

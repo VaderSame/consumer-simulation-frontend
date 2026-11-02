@@ -51,17 +51,38 @@ export interface TrialData {
 }
 
 // ============================================================================
-// API Communication Models (Provisions for Backend Integration)
+// Behavioral Telemetry & API Communication Models
 // ============================================================================
+
+export interface LabelViewEvent {
+  productId: string;
+  productName?: string;
+  openedAt: string;
+  closedAt: string;
+  dwellTimeMs: number;
+}
+
+export interface LoggedChatTurn {
+  role: 'user' | 'advisor';
+  content: string;
+  timestamp: string;
+  stage?: string | null;
+  chipId?: string | null;
+}
 
 export interface DecisionSubmission {
   sessionId: string;
   prolificId?: string;
+  studyId?: string;
   trialId: string;
   condition: Condition;
   selectedProductId: string;
   justification: string;
   confidenceScore: number;
+  trialDurationMs?: number;
+  labelViews?: LabelViewEvent[];
+  chatTranscript?: LoggedChatTurn[];
+  chipsClicked?: string[];
 }
 
 export interface DecisionResponse {
@@ -72,6 +93,14 @@ export interface DecisionResponse {
   isGroundTruthBest: boolean;
   isOverReliance: boolean;
   signedCalibration: number;
+  openedSteerLabel?: boolean;
+  openedAnyLabel?: boolean;
+  uniqueLabelsViewed?: number;
+  totalLabelDwellMs?: number;
+  chatUserTurns?: number;
+  chipsClickedCount?: number;
+  usedVerifyChip?: boolean;
+  trialDurationMs?: number | null;
   nextTrialId?: string | null;
   isLastTrial?: boolean;
   message: string;

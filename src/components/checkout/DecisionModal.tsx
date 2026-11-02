@@ -125,6 +125,22 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
                   <span className="text-slate-500">Calibration gap:</span>
                   <span className="font-bold text-slate-800">{apiResult.signedCalibration}</span>
                 </div>
+                {apiResult.uniqueLabelsViewed !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Labels inspected:</span>
+                    <span className="font-semibold text-slate-800">
+                      {apiResult.uniqueLabelsViewed} ({((apiResult.totalLabelDwellMs || 0) / 1000).toFixed(1)}s dwell)
+                    </span>
+                  </div>
+                )}
+                {apiResult.chatUserTurns !== undefined && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Advisor queries:</span>
+                    <span className="font-semibold text-slate-800">
+                      {apiResult.chatUserTurns} ({apiResult.chipsClickedCount || 0} chips)
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
