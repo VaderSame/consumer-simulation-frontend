@@ -10,11 +10,20 @@ import type {
 } from '../types';
 
 export const API_BASE_URL = (() => {
-  if (typeof window !== 'undefined' && window.location.hostname.includes('.devtunnels.ms')) {
-    const backendHost = window.location.host.replace(/-5173\b/, '-8000').replace(/-5174\b/, '-8000');
-    return `${window.location.protocol}//${backendHost}/api/v1`;
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname.includes('.devtunnels.ms')) {
+      const backendHost = window.location.host.replace(/-5173\b/, '-8000').replace(/-5174\b/, '-8000');
+      return `${window.location.protocol}//${backendHost}/api/v1`;
+    }
+    if (window.location.port === '5173' || window.location.port === '5174') {
+      return 'http://127.0.0.1:8000/api/v1';
+    }
+    return '/api/v1';
+  }
+  return 'http://127.0.0.1:8000/api/v1';
 })();
 
 /**
@@ -204,6 +213,7 @@ export async function sendAdvisorMessage(data: {
   message: string;
   history: ChatTurn[];
   activeStage?: string | null;
+  chipId?: string | null;
 }): Promise<AdvisorMessageResponse> {
   const res = await fetch(`${API_BASE_URL}/advisor/message`, {
     method: 'POST',
@@ -215,6 +225,7 @@ export async function sendAdvisorMessage(data: {
       message: data.message,
       history: data.history,
       active_stage: data.activeStage ?? null,
+      chip_id: data.chipId ?? null,
     }),
   });
   if (!res.ok) {
@@ -241,6 +252,7 @@ export async function streamAdvisorMessage(
     message: string;
     history: ChatTurn[];
     activeStage?: string | null;
+    chipId?: string | null;
   },
   onUpdate: (partialReply: string) => void
 ): Promise<string> {
@@ -254,6 +266,7 @@ export async function streamAdvisorMessage(
       message: data.message,
       history: data.history,
       active_stage: data.activeStage ?? null,
+      chip_id: data.chipId ?? null,
     }),
   });
 

@@ -27,6 +27,14 @@ const DEFAULT_TRIAL_ORDER = [
 ];
 
 export const App: React.FC = () => {
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+  const prolificPid = urlParams.get('PROLIFIC_PID') || urlParams.get('prolific_pid') || undefined;
+  const studyId = urlParams.get('STUDY_ID') || urlParams.get('study_id') || undefined;
+  const forceCondition = (urlParams.get('force_condition') || urlParams.get('condition') || undefined) as
+    | Condition
+    | undefined;
+  const isParticipantMode = Boolean(prolificPid) && urlParams.get('sandbox') !== '1';
+
   const [condition, setCondition] = useState<Condition>('ai_free');
   const [activeTrialId, setActiveTrialId] = useState<string>('trial_set_a_sleep');
   const [currentTrial, setCurrentTrial] = useState<TrialData>(sleepTrialSetA);
@@ -34,8 +42,8 @@ export const App: React.FC = () => {
   const [completedDecisions, setCompletedDecisions] = useState<CompletedDecision[]>([]);
   const [isStudyCompleted, setIsStudyCompleted] = useState<boolean>(false);
 
-  const [isSandboxOpen, setIsSandboxOpen] = useState<boolean>(true);
-  const [showResearchTags, setShowResearchTags] = useState<boolean>(true);
+  const [isSandboxOpen, setIsSandboxOpen] = useState<boolean>(!isParticipantMode);
+  const [showResearchTags, setShowResearchTags] = useState<boolean>(!isParticipantMode);
   const [activeLabelProduct, setActiveLabelProduct] = useState<Product | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [chatKey, setChatKey] = useState<number>(0);
@@ -64,7 +72,11 @@ export const App: React.FC = () => {
 
     async function connectToBackend() {
       try {
-        const session = await initSession();
+        const session = await initSession({
+          prolificPid,
+          studyId,
+          forceCondition,
+        });
         if (isMounted) {
           setSessionId(session.sessionId);
           setCondition(session.condition);
@@ -163,6 +175,8 @@ export const App: React.FC = () => {
     try {
       const response = await submitDecision({
         sessionId: sessionId || 'sess_local_fallback',
+        prolificId: prolificPid,
+        studyId: studyId,
         trialId: activeTrialId,
         condition,
         selectedProductId: data.productId,

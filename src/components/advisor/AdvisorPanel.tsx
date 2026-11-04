@@ -100,6 +100,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
           message: query,
           history,
           activeStage: stageUsed,
+          chipId: chip?.id || null,
         },
         (partialText) => {
           setCustomMessages((prev) => {
@@ -138,6 +139,7 @@ export const AdvisorPanel: React.FC<AdvisorPanelProps> = ({
           message: query,
           history,
           activeStage: stageUsed,
+          chipId: chip?.id || null,
         });
         setCustomMessages((prev) => {
           const next = [...prev];
